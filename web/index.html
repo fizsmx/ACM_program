@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeSolver Offline</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">CodeSolver <span class="muted">offline</span></div>
+  <div id="status" class="status">connecting…</div>
+  <label class="toggle"><input type="checkbox" id="devmode"> Developer mode</label>
+</header>
+
+<main>
+  <section class="left">
+    <div class="row">
+      <label>Language
+        <select id="language">
+          <option value="python">Python 3</option>
+          <option value="javascript">JavaScript (Node)</option>
+        </select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="reasoning" checked> Thinking</label>
+      <span class="spacer"></span>
+      <button id="btnSolve" class="primary">Solve</button>
+      <button id="btnCancel" disabled>Cancel</button>
+      <button id="btnClear">Clear</button>
+    </div>
+    <textarea id="problem" placeholder="Paste the full problem statement here (title, description, input, output, constraints, examples)…"></textarea>
+    <details id="testsBox" open>
+      <summary>Sample tests <span id="testsCount" class="muted"></span> <button id="btnAddTest" class="small">+ add</button></summary>
+      <div id="tests"></div>
+    </details>
+  </section>
+
+  <section class="right">
+    <div class="row">
+      <div id="phase" class="phase">idle</div>
+      <span class="spacer"></span>
+      <button id="btnRun" class="small">Run with input</button>
+      <button id="btnCopy" class="primary">Copy code</button>
+    </div>
+    <div id="analysis" class="analysis muted"></div>
+    <pre id="code" class="code" contenteditable="true" spellcheck="false"></pre>
+    <div id="results" class="results"></div>
+    <details id="thinkBox"><summary>Model thinking <span id="thinkLen" class="muted"></span></summary><pre id="thinking" class="thinking"></pre></details>
+    <details id="devBox" class="devonly"><summary>Developer log</summary><pre id="devlog" class="devlog"></pre></details>
+  </section>
+</main>
+
+<div id="runModal" class="modal hidden">
+  <div class="modal-body">
+    <h3>Run current code with custom input</h3>
+    <textarea id="runInput" placeholder="stdin…"></textarea>
+    <pre id="runOutput" class="code small"></pre>
+    <div class="row"><span class="spacer"></span><button id="btnRunGo" class="primary">Run</button><button id="btnRunClose">Close</button></div>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

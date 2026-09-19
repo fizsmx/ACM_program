@@ -1,0 +1,13 @@
+Your previous {LANGUAGE_LABEL} solution failed on the sample tests below. Find the bug and fix it.
+
+Common causes to check first: wrong input parsing (tokens vs lines, number of test cases), wrong output format (missing newline, wrong spacing, wrong case), off-by-one, integer overflow (JS), wrong algorithm/complexity (TIME_LIMIT), uninitialized state between test cases, recursion depth.
+
+Respond in EXACTLY this format:
+
+## Diagnosis
+<2-4 sentences: what is wrong and how you fix it>
+
+## Code
+```{FENCE}
+<complete corrected program — the FULL program, not a patch>
+```

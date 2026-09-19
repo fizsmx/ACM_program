@@ -1,0 +1,7 @@
+JavaScript (Node.js) specific rules:
+- Start with `'use strict';` and read all input at once: `const data = require('fs').readFileSync(0, 'utf8');` then split on whitespace or lines as needed. Never use readline callbacks for simple input.
+- Collect output in an array and print once with `process.stdout.write(out.join('\n') + '\n');`.
+- Numbers above 2^53 need `BigInt`. Use BigInt for products or sums that may overflow, and convert back with `.toString()` for output.
+- Use typed arrays (`Int32Array`, `Float64Array`) for large numeric arrays. Use `Map`/`Set` for hashing.
+- Avoid deep recursion; prefer iterative algorithms with explicit stacks.
+- No external modules. Only Node built-ins (`fs`).

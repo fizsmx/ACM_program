@@ -1,0 +1,51 @@
+:root {
+  --bg: #0f1218; --panel: #171b24; --border: #2a3040; --text: #e6e9ef; --muted: #8b93a7;
+  --accent: #4f8cff; --ok: #2ecc71; --bad: #ff5c5c; --warn: #f5b942; --mono: Consolas, "Cascadia Mono", monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, Segoe UI, sans-serif; }
+header { display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.brand { font-weight: 700; font-size: 16px; }
+.muted { color: var(--muted); font-weight: 400; }
+.status { flex: 1; color: var(--muted); font-size: 12px; }
+main { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; height: calc(100% - 44px); }
+section { display: flex; flex-direction: column; gap: 8px; min-height: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.spacer { flex: 1; }
+label { color: var(--muted); font-size: 12px; }
+select, button, textarea, input { font: inherit; }
+select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+button { background: #232a38; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.small { padding: 2px 8px; font-size: 12px; }
+textarea { flex: 1; min-height: 140px; width: 100%; resize: vertical; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: var(--mono); font-size: 13px; }
+#problem { flex: 1; }
+.toggle { display: inline-flex; align-items: center; gap: 4px; }
+details { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+summary { cursor: pointer; color: var(--muted); font-size: 12px; user-select: none; }
+#tests { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 220px; overflow: auto; }
+.test { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; }
+.test textarea { min-height: 54px; font-size: 12px; resize: vertical; }
+.phase { font-weight: 600; color: var(--accent); }
+.analysis { font-size: 12px; white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.code { flex: 1; min-height: 200px; margin: 0; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 13px; white-space: pre; outline: none; }
+.code.small { flex: none; min-height: 80px; max-height: 200px; }
+.results { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { padding: 3px 8px; border-radius: 12px; font-size: 12px; border: 1px solid var(--border); cursor: pointer; }
+.pill.PASS { background: rgba(46,204,113,.15); border-color: var(--ok); color: var(--ok); }
+.pill.WRONG_ANSWER, .pill.RUNTIME_ERROR, .pill.COMPILE_ERROR, .pill.INTERNAL_ERROR { background: rgba(255,92,92,.15); border-color: var(--bad); color: var(--bad); }
+.pill.TIME_LIMIT { background: rgba(245,185,66,.15); border-color: var(--warn); color: var(--warn); }
+.thinking, .devlog { max-height: 220px; overflow: auto; margin: 6px 0 0; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; color: var(--muted); }
+.devonly { display: none; }
+body.dev .devonly { display: block; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+.modal.hidden { display: none; }
+.modal-body { width: min(720px, 92vw); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.modal-body textarea { min-height: 100px; }
+.banner { padding: 8px 10px; border-radius: 6px; font-weight: 600; }
+.banner.PASS { background: rgba(46,204,113,.2); color: var(--ok); }
+.banner.FAIL, .banner.error { background: rgba(255,92,92,.2); color: var(--bad); }
+.banner.UNVERIFIED, .banner.cancelled { background: rgba(245,185,66,.2); color: var(--warn); }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }

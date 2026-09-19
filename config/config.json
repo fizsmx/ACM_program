@@ -1,0 +1,36 @@
+{
+  "language": "python",
+  "port_backend": 8765,
+  "port_llm": 8766,
+  "max_repair_attempts": 2,
+  "test_timeout_seconds": 5,
+  "solve_timeout_seconds": 600,
+  "health_timeout_seconds": 240,
+  "reasoning": {
+    "enabled": true,
+    "seconds_budget": 120,
+    "min_tokens": 384,
+    "max_tokens": 4096,
+    "default_tokens": 768,
+    "restart_if_deviation": 0.5,
+    "budget_message": "Time is up. I must stop thinking now and write the final answer with the complete code."
+  },
+  "sampling": {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "top_k": 20,
+    "repair_temperature": 0.2,
+    "max_answer_tokens": 2500
+  },
+  "context_size": 16384,
+  "profiles": {
+    "HIGH":   { "min_free_ram_gb": 10, "model": "Qwen3.5-9B-UD-Q4_K_XL.gguf" },
+    "MEDIUM": { "min_free_ram_gb": 5,  "model": "Qwen3.5-4B-UD-Q4_K_XL.gguf" },
+    "LOW":    { "min_free_ram_gb": 3,  "model": "Qwen3.5-2B-UD-Q4_K_XL.gguf" }
+  },
+  "force_profile": null,
+  "prefer_gpu": true,
+  "gpu_layers": 99,
+  "threads": null,
+  "open_browser": true
+}

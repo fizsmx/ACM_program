@@ -1,0 +1,9 @@
+Extract every sample test case (example) from the problem statement below. For each example give the exact stdin text and the exact expected stdout text, preserving line breaks. Do not invent examples that are not in the statement. If the statement has no examples, return [].
+
+Answer with ONLY a JSON array, no prose, no markdown fences:
+[{"input": "3\n1 2 3\n", "expected": "6\n"}]
+
+Problem statement:
+"""
+{PROBLEM}
+"""

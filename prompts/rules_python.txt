@@ -1,0 +1,7 @@
+Python-specific rules:
+- Read input fast: `import sys` then `data = sys.stdin.buffer.read().split()` for token-based input, or `sys.stdin.readline` for line-based input. Never use `input()` in loops over large N.
+- Collect output in a list and print once: `sys.stdout.write("\n".join(out) + "\n")`.
+- Avoid deep recursion (limit ~1000): prefer iterative DFS/DP. If recursion is truly needed, use `sys.setrecursionlimit(1 << 25)` and run inside `threading.Thread(target=main); threading.stack_size(1 << 27)`.
+- Python integers are arbitrary precision; use integer arithmetic instead of floats when possible.
+- Use `dict`/`set`/`collections`/`heapq`/`bisect`/`itertools`/`math` as needed. Compatible with Python 3.8+.
+- Wrap the solution in `def main():` and call it at the end with `main()`.

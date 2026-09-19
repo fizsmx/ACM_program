@@ -1,0 +1,11 @@
+# binarios y modelos (se obtienen con tools/fetch_deps.py)
+bin/
+runtime/
+models/
+tools/downloads/
+# estado de ejecución
+workspace/
+logs/
+dist/
+__pycache__/
+*.pyc

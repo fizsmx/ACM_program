@@ -1,0 +1,15 @@
+Your previous approaches to this problem failed repeatedly, so the algorithm or the understanding of the statement is probably wrong, not a small typo.
+
+Re-read the statement from scratch. Re-derive by hand the expected output of the first sample from the input, step by step, and use that to discover what the problem really asks. Then choose a DIFFERENT algorithm or interpretation and write a complete new {LANGUAGE_LABEL} program.
+
+Respond in EXACTLY this format:
+
+## Analysis
+- Why the previous approach was wrong: <1-2 sentences>
+- Hand trace of sample 1: <short>
+- New approach: <algorithm and complexity>
+
+## Code
+```{FENCE}
+<complete program>
+```
