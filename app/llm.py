@@ -102,10 +102,15 @@ class LlamaClient:
         """Devuelve (reasoning, content, segundos). Llama a on_token(canal, texto) por fragmento."""
         t0 = time.time()
         reasoning, content = [], []
-        for channel, text in self.chat(messages, **kw):
-            (reasoning if channel == "reasoning" else content).append(text)
-            if on_token:
-                on_token(channel, text)
+        gen = self.chat(messages, **kw)
+        try:
+            for channel, text in gen:
+                (reasoning if channel == "reasoning" else content).append(text)
+                if on_token:
+                    on_token(channel, text)
+        finally:
+            # Cerrar el generador cierra la respuesta HTTP (with resp:) y llama-server aborta la generación.
+            gen.close()
         return "".join(reasoning), "".join(content), time.time() - t0
 
     def benchmark(self, n_tokens: int = 48) -> dict:

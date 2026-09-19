@@ -1,3 +1,4 @@
+<!-- samples: 2 -->
 # Count Pairs With Given Sum
 
 You are given an array of n integers and an integer k. Count the number of pairs (i, j) with i < j such that a_i + a_j = k.

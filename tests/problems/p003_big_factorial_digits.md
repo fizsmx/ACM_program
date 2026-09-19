@@ -1,3 +1,4 @@
+<!-- samples: 1 -->
 # Trailing Zeros and Digit Sum
 
 For each query n, print two numbers: the number of trailing zeros of n! (n factorial) and the sum of the decimal digits of 2^n.

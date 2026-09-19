@@ -1,4 +1,4 @@
-"""Tests unitarios sin LLM. Ejecutar:  runtime\\python\\python.exe -X utf8 -m unittest tests.test_units -v"""
+"""Tests unitarios sin LLM. Ejecutar:  runtime\\python\\python.exe -X utf8 tests\test_units.py -v"""
 from __future__ import annotations
 
 import os

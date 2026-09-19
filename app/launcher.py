@@ -25,8 +25,19 @@ _JOB = jobobject.try_create()  # los hijos mueren si el launcher muere (cierre d
 
 
 # --------------------------------------------------------------------------- util
+def rotate_logs(keep: int = 15) -> None:
+    """Conserva solo los últimos `keep` session_*.log."""
+    try:
+        files = sorted(f for f in os.listdir(paths.LOGS_DIR) if f.startswith("session_") and f.endswith(".log"))
+        for f in files[:-keep] if len(files) > keep else []:
+            os.remove(os.path.join(paths.LOGS_DIR, f))
+    except OSError:
+        pass
+
+
 def setup_logging() -> str:
     paths.ensure_dirs()
+    rotate_logs()
     try:  # que los mensajes salgan al instante aunque stdout esté redirigido
         sys.stdout.reconfigure(line_buffering=True)
     except Exception:
@@ -45,16 +56,29 @@ def free_port(start: int, tries: int = 6) -> int:
     raise RuntimeError(f"No hay puertos libres entre {start} y {start + tries - 1}")
 
 
-def kill_stale_llm() -> None:
-    """Mata un llama-server de una sesión anterior que no se cerró (PID guardado)."""
+def process_name(pid: int) -> str:
+    """Nombre de imagen del proceso con ese PID ('' si no existe)."""
+    out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                         capture_output=True, text=True, creationflags=_NO_WINDOW).stdout
+    line = out.strip().splitlines()[0] if out.strip() else ""
+    if not line.startswith('"'):
+        return ""
+    return line.split('","')[0].strip('"').lower()
+
+
+def kill_stale_llm() -> bool:
+    """Mata un llama-server de una sesión anterior que no se cerró (PID guardado).
+    Si el PID fue reutilizado por otro proceso, NO lo toca. Devuelve True si mató algo."""
     if not os.path.exists(paths.LLM_PID_FILE):
-        return
+        return False
+    killed = False
     try:
-        pid = int(open(paths.LLM_PID_FILE).read().strip())
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True, text=True, creationflags=_NO_WINDOW).stdout
-        if "llama-server" in out:
+        with open(paths.LLM_PID_FILE, encoding="utf-8") as f:
+            pid = int(f.read().strip())
+        if process_name(pid) == "llama-server.exe":
             log.warning("Cerrando llama-server huérfano (PID %s) de una sesión anterior", pid)
             subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=_NO_WINDOW)
+            killed = True
     except Exception as e:
         log.debug("kill_stale_llm: %s", e)
     finally:
@@ -62,6 +86,24 @@ def kill_stale_llm() -> None:
             os.remove(paths.LLM_PID_FILE)
         except OSError:
             pass
+    return killed
+
+
+def check_gguf(path: str) -> tuple[bool, str]:
+    """Comprueba magic bytes 'GGUF' y tamaño mínimo. Devuelve (ok, motivo)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            magic = f.read(4)
+    except OSError as e:
+        return False, f"no se puede leer: {e}"
+    if magic != b"GGUF":
+        return False, "no es un archivo GGUF válido (cabecera incorrecta): ¿descarga corrupta o incompleta?"
+    if size < 100 * 2**20:
+        return False, f"archivo demasiado pequeño ({size / 2**20:.0f} MB): ¿descarga incompleta?"
+    if os.path.exists(path + ".part"):
+        return False, "existe un .part al lado: la descarga no terminó"
+    return True, ""
 
 
 # --------------------------------------------------------------------------- selección
@@ -82,7 +124,12 @@ def choose_profile(cfg: dict, hw: dict) -> tuple[str, str]:
         if not forced and hw["ram_free_gb"] < prof["min_free_ram_gb"]:
             reasons.append(f"{name}: necesita {prof['min_free_ram_gb']} GB libres, hay {hw['ram_free_gb']}")
             continue
-        return name, os.path.join(paths.MODELS_DIR, model)
+        full = os.path.join(paths.MODELS_DIR, model)
+        ok, why = check_gguf(full)
+        if not ok:
+            reasons.append(f"{name}: models/{model} {why}")
+            continue
+        return name, full
     raise RuntimeError("Ningún perfil utilizable:\n  " + "\n  ".join(reasons))
 
 
@@ -188,6 +235,88 @@ def save_speed(sig: str, tps: float) -> None:
     json.dump(d, open(SPEED_CACHE, "w", encoding="utf-8"), indent=1)
 
 
+# --------------------------------------------------------------------------- check
+def run_check(cfg: dict) -> int:
+    """Diagnóstico sin cargar el modelo. Exit 0 si todo lo imprescindible está OK."""
+    problems = 0
+
+    def row(ok, label, detail=""):
+        nonlocal problems
+        tag = "OK   " if ok is True else ("AVISO" if ok is None else "ERROR")
+        if ok is False:  # los avisos (opcionales ausentes) no hacen fallar el diagnóstico
+            problems += 1
+        print(f"  [{tag}] {label}" + (f"  — {detail}" if detail else ""))
+
+    print("  Diagnóstico de CodeSolver (sin cargar el modelo)\n")
+    drive = os.path.splitdrive(paths.APP_ROOT)[0] or "?"
+    row(True, f"APP_ROOT = {paths.APP_ROOT}", f"unidad {drive}")
+    hw = hardware.detect()
+    row(True, f"RAM libre {hw['ram_free_gb']} GB de {hw['ram_total_gb']} GB, {hw['logical_cpus']} CPUs lógicas")
+    row(True if hw["vulkan"] else None, "vulkan-1.dll (GPU opcional)", ", ".join(hw["gpus"]) or ("presente" if hw["vulkan"] else "no disponible → se usará CPU"))
+
+    for label, exe, args in (("runtime/python", paths.PYTHON_EXE, ["-X", "utf8", "-c", "print('hello')"]),
+                             ("runtime/node", paths.NODE_EXE, ["-e", "console.log('hello')"])):
+        if not os.path.exists(exe):
+            row(None, label, f"no existe {exe}")
+            continue
+        try:
+            r = subprocess.run([exe] + args, capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW,
+                               env=runners._env(), cwd=os.path.dirname(exe))
+            row(r.stdout.strip() == "hello", label, (r.stderr.strip() or r.stdout.strip())[:120])
+        except Exception as e:
+            row(False, label, str(e))
+
+    for kind in ("cpu", "vulkan"):
+        exe = paths.llama_server_exe(kind)
+        if not os.path.exists(exe):
+            row(None if kind == "vulkan" else False, f"bin/llama/{kind}/llama-server.exe", "no existe")
+            continue
+        try:
+            r = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW,
+                               cwd=os.path.dirname(exe))
+            ver = (r.stdout + r.stderr).strip().splitlines()
+            row(r.returncode == 0, f"bin/llama/{kind}/llama-server.exe", ver[0][:80] if ver else "")
+        except Exception as e:
+            row(False, f"bin/llama/{kind}/llama-server.exe", str(e))
+
+    any_model = False
+    for name in ("HIGH", "MEDIUM", "LOW"):
+        prof = cfg["profiles"][name]
+        full = os.path.join(paths.MODELS_DIR, prof["model"])
+        if not os.path.exists(full):
+            row(None, f"modelo {name}: {prof['model']}", "no está en models/")
+            continue
+        ok, why = check_gguf(full)
+        fits = hw["ram_free_gb"] >= prof["min_free_ram_gb"]
+        row(ok, f"modelo {name}: {prof['model']}",
+            (why or f"{os.path.getsize(full) / 2**30:.1f} GB; necesita {prof['min_free_ram_gb']} GB libres → "
+                    + ("cabe" if fits else "NO cabe ahora")))
+        any_model = any_model or ok
+    if not any_model:
+        row(False, "ningún modelo utilizable")
+
+    for label, port in (("puerto LLM", int(cfg["port_llm"])), ("puerto web", int(cfg["port_backend"]))):
+        try:
+            p = free_port(port)
+            row(True, f"{label} {port}", "" if p == port else f"ocupado → se usará {p}")
+        except RuntimeError as e:
+            row(False, f"{label} {port}", str(e))
+
+    for d in (paths.WORKSPACE_DIR, paths.LOGS_DIR):
+        try:
+            os.makedirs(d, exist_ok=True)
+            test = os.path.join(d, "_write_test.tmp")
+            with open(test, "w") as f:
+                f.write("ok")
+            os.remove(test)
+            row(True, f"escritura en {os.path.relpath(d, paths.APP_ROOT)}/")
+        except OSError as e:
+            row(False, f"escritura en {os.path.relpath(d, paths.APP_ROOT)}/", str(e))
+
+    print(f"\n  Resultado: {'TODO OK' if problems == 0 else str(problems) + ' aviso(s)/error(es)'}")
+    return 0 if problems == 0 else 1
+
+
 # --------------------------------------------------------------------------- main
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="CodeSolver")
@@ -195,7 +324,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--cpu", action="store_true", help="no usar GPU/Vulkan")
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--port", type=int, help="puerto del backend")
+    ap.add_argument("--check", action="store_true", help="diagnóstico sin cargar el modelo")
     a = ap.parse_args(argv)
+
+    if a.check:
+        paths.ensure_dirs()
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+        except Exception:
+            pass
+        return run_check(paths.load_config())
 
     logfile = setup_logging()
     print("=" * 64)
@@ -245,6 +383,12 @@ def main(argv: list[str]) -> int:
             break
         stop(proc)
         print(f"  Falló el arranque con {kind}. Últimas líneas de {llog}:\n{tail(llog, 15)}")
+        low = tail(llog, 60).lower()
+        if any(k in low for k in ("failed to load model", "invalid magic", "tensor", "unexpectedly reached end", "gguf_init")):
+            print(f"  PISTA: el modelo parece corrupto o incompleto ({os.path.basename(model)}, "
+                  f"{os.path.getsize(model) / 2**30:.2f} GB). Vuelve a copiarlo o descárgalo con tools/fetch_deps.py.")
+        elif "out of memory" in low or "failed to allocate" in low or "cannot allocate" in low:
+            print("  PISTA: memoria insuficiente. Cierra programas o usa --profile MEDIUM / LOW.")
     if used is None:
         print("\nERROR: no se pudo iniciar el modelo. Revisa logs/llama_*.log")
         return 3
@@ -279,12 +423,17 @@ def main(argv: list[str]) -> int:
     import server
     httpd = server.serve(cfg, runtime, port_web)
     url = f"http://127.0.0.1:{port_web}/"
-    print(f"\n  LISTO →  {url}\n  (Ctrl+C para salir)\n")
+    print("\n" + "#" * 64 + f"\n#   LISTO  →  abre en el navegador:  {url:<24}#\n" + "#" * 64)
+    print("  (Ctrl+C o cerrar esta ventana para salir; el modelo se apaga solo)\n")
     if cfg.get("open_browser", True) and not a.no_browser:
+        opened = False
         try:
-            webbrowser.open(url)
+            opened = webbrowser.open(url)
         except Exception as e:
             log.warning("No se pudo abrir el navegador: %s", e)
+        if not opened:
+            print(f"  No se pudo abrir el navegador automáticamente. Copia esta URL: {url}")
+            print("  Alternativa sin navegador:  CodeSolver.bat solve problema.txt --lang python --out sol.py")
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     try:
@@ -296,7 +445,10 @@ def main(argv: list[str]) -> int:
     except KeyboardInterrupt:
         print("\n  Cerrando...")
     finally:
-        httpd.shutdown()
+        try:
+            httpd.shutdown()
+        except Exception:
+            pass
         stop(proc)
         runners.cleanup_workspace()
         log.info("Sesión terminada. Log: %s", logfile)

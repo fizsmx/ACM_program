@@ -22,6 +22,10 @@ class Cancelled(Exception):
     pass
 
 
+class TimeBudgetExceeded(Cancelled):
+    """El tiempo total de resolución (solve_timeout_seconds) se agotó en mitad de una generación."""
+
+
 def extract_code(text: str, language: str) -> str | None:
     """Toma el último bloque ``` del lenguaje; si no hay etiquetado, el último bloque cualquiera."""
     blocks = re.findall(r"```([a-zA-Z0-9_+-]*)[ \t]*\n(.*?)```", text, re.DOTALL)
@@ -43,6 +47,7 @@ class Solver:
         self.client = client
         self.cfg = cfg
         self.runtime = runtime  # {'gen_tps':..., 'reasoning_budget':...}
+        self._deadline: float | None = None  # fijado por solve(); comprobado en cada token
 
     # ----------------------------------------------------------------- helpers
     def _prompt(self, name: str, language: str, **kw) -> str:
@@ -62,6 +67,9 @@ class Solver:
         def on_token(channel, text):
             if cancel.is_set():
                 raise Cancelled()
+            if self._deadline is not None and time.time() > self._deadline:
+                cancel.set()
+                raise TimeBudgetExceeded()
             emit({"type": "token", "channel": channel, "text": text})
 
         try:
@@ -141,6 +149,23 @@ class Solver:
     def solve(self, problem: str, language: str, emit: Emit, cancel: threading.Event,
               tests: list[dict] | None = None, use_reasoning: bool = True) -> dict:
         t_start = time.time()
+        self._deadline = t_start + float(self.cfg["solve_timeout_seconds"])
+        try:
+            return self._solve(problem, language, emit, cancel, tests, use_reasoning, t_start)
+        finally:
+            self._deadline = None
+
+    def _solve(self, problem, language, emit, cancel, tests, use_reasoning, t_start) -> dict:
+        self._last_code, self._attempts = None, []
+        try:
+            return self._solve_loop(problem, language, emit, cancel, tests, use_reasoning, t_start)
+        except TimeBudgetExceeded:
+            emit({"type": "status", "text": f"Solve time limit ({int(self.cfg['solve_timeout_seconds'])} s) reached "
+                                            "during generation; stopping. Showing the last code produced (if any)."})
+            return {"status": "TIMEOUT", "code": self._last_code, "attempts": self._attempts,
+                    "seconds": round(time.time() - t_start, 1)}
+
+    def _solve_loop(self, problem, language, emit, cancel, tests, use_reasoning, t_start) -> dict:
         max_repairs = int(self.cfg["max_repair_attempts"])
         if tests is None:
             tests = self._get_tests(problem, emit, cancel)
@@ -152,7 +177,7 @@ class Solver:
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         s = self.cfg["sampling"]
 
-        attempts: list[dict] = []
+        attempts = self._attempts
         code, content = None, ""
         for attempt in range(max_repairs + 2):  # 0 = solve, 1..N = repair, N+1 = rethink
             if attempt == 0:
@@ -176,6 +201,7 @@ class Solver:
                 if code is None:
                     raise RuntimeError("The model did not return code.")
             messages.append({"role": "assistant", "content": content})
+            self._last_code = code
             emit({"type": "code", "attempt": attempt, "code": code, "analysis": _analysis_text(content)})
 
             if not tests:

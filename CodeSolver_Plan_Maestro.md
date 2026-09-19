@@ -143,12 +143,12 @@ CodeSolver/
 - Endpoints: `GET /api/status`, `POST /api/solve` (SSE: fases, tokens, tests, reparaciones), `POST /api/run` (código + input manual), `POST /api/cancel`, `POST /api/reset`.
 - **Prueba:** los 3 problemas iniciales en `tests/problems/` se resuelven en Python y JS desde la UI. Tests unitarios de `examples.py` y `compare.py`.
 
-### M3 — Robustez
+### M3 — Robustez  ✅ 2026-09-19 (modo `--check`, cancelación real, timeout dentro de la generación, 503 si el LLM no responde, rotación de logs, Job Object, `tools/package.py`, USB en D: verificado: carga 4B 45 s, 6.4-6.7 tok/s, solve PASS desde el USB; 66 tests automáticos en verde)
 - Timeouts en todo; cancelación; limpieza de `workspace/`; logs por sesión en `logs/`; mensajes claros para: modelo ausente/corrupto, RAM insuficiente, puerto ocupado, llama-server no arranca, navegador no abre (imprimir URL), código inválido, TLE.
 - Recuperación: al arrancar, detectar `llama-server` de una sesión anterior y cerrarlo.
 - **Prueba:** simulaciones de fallo de la tabla de la sección 6; cuenta de usuario estándar sin admin; USB en letra distinta.
 
-### M4 — Calidad de soluciones
+### M4 — Calidad de soluciones  ⏳ en curso (dataset de 27 problemas con soluciones de referencia listo; benchmark desde USB en ejecución)
 - `tests/problems/`: 30-50 problemas variados (arrays, strings, math, sorting, binary search, hashing, two pointers, BFS/DFS, greedy, DP, simulación) con ejemplos y tests ocultos.
 - `tools/bench.py`: resuelve todos, mide aciertos primer intento / tras reparación / fallo, tiempo medio, tokens. Compara 9B vs 4B vs Qwen2.5-Coder-7B y distintos `reasoning_budget`.
 - Ajustar prompts a partir de los fallos (lectura rápida de stdin, formato exacto de salida, múltiples casos, BigInt en JS, recursión → iterativo en Python, `sys.setrecursionlimit`).

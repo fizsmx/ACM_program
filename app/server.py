@@ -83,8 +83,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _sse(self, obj: dict):
-        self.wfile.write(("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
-        self.wfile.flush()
+        try:
+            self.wfile.write(("data: " + json.dumps(obj, ensure_ascii=False) + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError, OSError):
+            # el navegador cerró la pestaña/conexión: no seguir gastando tokens
+            STATE.cancel.set()
+            log.info("cliente SSE desconectado; cancelando la generación")
+            raise Cancelled()
 
     # ----------------------------------------------------------- routes
     def do_GET(self):
@@ -130,6 +136,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "empty problem"}, 400)
         if language not in runners.LANGS:
             return self._json({"error": "unsupported language"}, 400)
+        ok, why = st.client.health()
+        if not ok:
+            return self._json({"error": f"LLM engine not responding ({why}). Restart CodeSolver.bat."}, 503)
         if not st.lock.acquire(blocking=False):
             return self._json({"error": "busy: another solve is running (cancel it first)"}, 409)
         try:
@@ -143,8 +152,11 @@ class Handler(BaseHTTPRequestHandler):
                                          use_reasoning=use_reasoning)
                 emit({"type": "done", **result})
             except Cancelled:
-                emit({"type": "cancelled"})
-            except (ConnectionAbortedError, BrokenPipeError):
+                try:
+                    emit({"type": "cancelled"})
+                except Cancelled:
+                    pass  # el cliente ya no está
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
                 st.cancel.set()
             except Exception as e:  # noqa
                 log.error("solve failed: %s\n%s", e, traceback.format_exc())

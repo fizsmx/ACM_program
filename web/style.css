@@ -47,5 +47,5 @@ body.dev .devonly { display: block; }
 .banner { padding: 8px 10px; border-radius: 6px; font-weight: 600; }
 .banner.PASS { background: rgba(46,204,113,.2); color: var(--ok); }
 .banner.FAIL, .banner.error { background: rgba(255,92,92,.2); color: var(--bad); }
-.banner.UNVERIFIED, .banner.cancelled { background: rgba(245,185,66,.2); color: var(--warn); }
+.banner.UNVERIFIED, .banner.TIMEOUT, .banner.cancelled { background: rgba(245,185,66,.2); color: var(--warn); }
 @media (max-width: 900px) { main { grid-template-columns: 1fr; height: auto; } }

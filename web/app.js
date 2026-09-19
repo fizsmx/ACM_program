@@ -9,9 +9,12 @@ const els = {
   runModal: $('runModal'), runInput: $('runInput'), runOutput: $('runOutput'), runGo: $('btnRunGo'), runClose: $('btnRunClose'),
 };
 let solving = false, streamBuf = '', lastEvents = [];
+let phaseName = 'idle', phaseStart = 0, solveStart = 0, timerId = null;
+function fmt(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+function tick() { if (!solving) return; els.phase.textContent = `${phaseName}  ·  ${fmt(Date.now() - phaseStart)} (total ${fmt(Date.now() - solveStart)})`; }
 
 function dev(msg) { els.devlog.textContent += msg + '\n'; els.devlog.scrollTop = els.devlog.scrollHeight; }
-function setPhase(t, cls) { els.phase.textContent = t; els.phase.className = 'phase' + (cls ? ' ' + cls : ''); }
+function setPhase(t, cls) { phaseName = t; phaseStart = Date.now(); els.phase.textContent = t; els.phase.className = 'phase' + (cls ? ' ' + cls : ''); }
 function pill(r) {
   const p = document.createElement('span');
   p.className = 'pill ' + r.status; p.textContent = `#${r.index + 1} ${r.status} ${r.time_ms}ms`;
@@ -72,7 +75,8 @@ function handleEvent(ev) {
     case 'done': {
       const b = document.createElement('div'); b.className = 'banner ' + ev.status;
       b.textContent = ev.status === 'PASS' ? `✔ All sample tests passed (${ev.seconds}s, ${ev.attempts.length} attempt${ev.attempts.length > 1 ? 's' : ''})`
-        : ev.status === 'UNVERIFIED' ? `⚠ No sample tests: code NOT verified (${ev.seconds}s)` : `✖ Still failing after ${ev.attempts.length} attempts (${ev.seconds}s) — check the code`;
+        : ev.status === 'UNVERIFIED' ? `⚠ No sample tests: code NOT verified (${ev.seconds}s)`
+        : ev.status === 'TIMEOUT' ? `⏱ Time limit reached (${ev.seconds}s) — showing the last code produced, NOT verified` : `✖ Still failing after ${ev.attempts.length} attempts (${ev.seconds}s) — check the code`;
       els.results.prepend(b); els.code.textContent = ev.code || els.code.textContent; setPhase(ev.status, ev.status);
       break; }
     case 'cancelled': setPhase('cancelled'); break;
@@ -85,7 +89,7 @@ async function solve() {
   if (!problem) { els.problem.focus(); return; }
   solving = true; els.solve.disabled = true; els.cancel.disabled = false;
   els.results.innerHTML = ''; els.analysis.textContent = ''; els.code.textContent = ''; els.devlog.textContent = ''; lastEvents = [];
-  setPhase('starting…');
+  solveStart = Date.now(); setPhase('starting…'); if (timerId) clearInterval(timerId); timerId = setInterval(tick, 1000);
   const body = { problem, language: els.language.value, reasoning: els.reasoning.checked };
   const tests = readTests(); if (tests.length) body.tests = tests;
   try {
@@ -102,7 +106,7 @@ async function solve() {
       }
     }
   } catch (e) { handleEvent({ type: 'error', message: e.message }); }
-  solving = false; els.solve.disabled = false; els.cancel.disabled = true; refreshStatus();
+  solving = false; clearInterval(timerId); timerId = null; els.solve.disabled = false; els.cancel.disabled = true; refreshStatus();
 }
 els.solve.onclick = solve;
 els.cancel.onclick = () => fetch('/api/cancel', { method: 'POST' });

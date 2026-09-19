@@ -21,6 +21,13 @@ _EXAMPLES_HDR = re.compile(r"^[ \t]*(?:#+\s*|\*\*)?(examples?|samples?|sample\s+
                            re.IGNORECASE | re.MULTILINE)
 _STOP_HDR = re.compile(r"^[ \t]*(?:#+\s*|\*\*)?(note|notes|explanation|constraints|hint|scoring|subtasks?)\b",
                        re.IGNORECASE)
+# "Example 2:", "### Sample 3", "Test case 1"...: separan ejemplos y nunca forman parte del input/output.
+_EXAMPLE_N_HDR = re.compile(
+    r"^[ \t]*(?:#+\s*|\*\*)?(?:examples?|samples?|sample\s+tests?|test\s*cases?)\s*(?:#|№)?\s*\d*\s*(?:\*\*)?\s*:?[ \t]*$",
+    re.IGNORECASE)
+# Cualquier encabezado markdown con texto ("### Something") termina el bloque.
+_MD_HEADING = re.compile(r"^[ \t]*#{1,6}[ \t]+[A-Za-z]")
+_FENCE = re.compile(r"^\s*```")
 
 
 def _looks_like_prose(block: str) -> bool:
@@ -38,17 +45,41 @@ def _looks_like_prose(block: str) -> bool:
 def _cut_at_stop(block: str) -> str:
     out = []
     for ln in block.splitlines():
-        if _STOP_HDR.match(ln):
+        if _STOP_HDR.match(ln) or _EXAMPLE_N_HDR.match(ln) or _MD_HEADING.match(ln):
             break
         out.append(ln)
     return "\n".join(out)
 
 
+def _strip_fences(block: str) -> str:
+    """Si el bloque contiene fences ``` balanceados, conserva solo su contenido (descarta la
+    explicación en prosa que suele seguir a un ejemplo, p.ej. en AtCoder). Si están
+    desbalanceados, solo elimina las líneas de fence."""
+    lines = block.split("\n")
+    fences = [i for i, ln in enumerate(lines) if _FENCE.match(ln)]
+    if not fences:
+        return block
+    if len(fences) % 2:
+        return "\n".join(ln for ln in lines if not _FENCE.match(ln))
+    out: list[str] = []
+    for a, b in zip(fences[0::2], fences[1::2]):
+        out.extend(lines[a + 1:b])
+    return "\n".join(out)
+
+
+def _drop_trailing_prose(block: str) -> str:
+    """Elimina párrafos finales (separados por línea en blanco) que parecen prosa explicativa."""
+    paras = re.split(r"\n[ \t]*\n", block.strip("\n"))
+    while len(paras) > 1 and _looks_like_prose(paras[-1]):
+        paras.pop()
+    return "\n\n".join(paras)
+
+
 def _clean(block: str) -> str:
     block = _cut_at_stop(block)
     block = block.replace("\r\n", "\n").strip("\n")
-    # quitar fences markdown
-    block = re.sub(r"^\s*```[a-zA-Z]*\s*$", "", block, flags=re.MULTILINE)
+    block = _strip_fences(block)
+    block = _drop_trailing_prose(block)
     lines = [ln.rstrip() for ln in block.split("\n")]
     while lines and not lines[0].strip():
         lines.pop(0)
