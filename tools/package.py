@@ -29,12 +29,23 @@ MODEL_ALIASES = {
 }
 
 # rutas relativas (con /) excluidas siempre; los patrones se comparan con fnmatch contra la ruta relativa
-EXCLUDE_DIRS = {".git", "tools/downloads", "workspace", "logs", "dist", "runtime/node/node_modules"}
+EXCLUDE_DIRS = {
+    ".git", "tools/downloads", "workspace", "logs", "dist", "runtime/node/node_modules",
+    # basura de npm/corepack del Node portable de Linux (no se usa; ahorra ~30 MB)
+    "runtime/node-linux/lib/node_modules/npm", "runtime/node-linux/lib/node_modules/corepack",
+}
 EXCLUDE_PATTERNS = [
     "*/__pycache__/*", "__pycache__/*", "*.pyc", "*.part",
     "runtime/node/npm*", "runtime/node/npx*", "runtime/node/corepack*", "runtime/node/install_tools.bat",
     "runtime/node/nodevars.bat", "runtime/node/CHANGELOG.md", "MANIFEST.txt",
+    "runtime/node-linux/bin/npm", "runtime/node-linux/bin/npx", "runtime/node-linux/bin/corepack",
+    "runtime/node-linux/CHANGELOG.md",
 ]
+
+# binarios propios de cada plataforma (para --platform); son prefijos de ruta o archivos sueltos
+WIN_ONLY = {"bin/llama/cpu", "bin/llama/vulkan", "runtime/python", "runtime/node", "CodeSolver.bat"}
+LINUX_ONLY = {"bin/llama/linux-cpu", "bin/llama/linux-vulkan", "runtime/python-linux", "runtime/node-linux", "CodeSolver.sh"}
+
 BIG = 64 * 1024 * 1024  # a partir de aquí se muestra progreso
 
 
@@ -42,10 +53,20 @@ def rel(path: str, base: str) -> str:
     return os.path.relpath(path, base).replace("\\", "/")
 
 
-def excluded(r: str, with_tests: bool) -> bool:
+def platform_excludes(platform: str) -> set[str]:
+    """Prefijos/archivos a excluir según --platform (win | linux | both)."""
+    if platform == "win":
+        return set(LINUX_ONLY)
+    if platform == "linux":
+        return set(WIN_ONLY)
+    return set()
+
+
+def excluded(r: str, with_tests: bool, extra_dirs: frozenset[str] = frozenset()) -> bool:
     parts = r.split("/")
     for i in range(1, len(parts) + 1):
-        if "/".join(parts[:i]) in EXCLUDE_DIRS:
+        prefix = "/".join(parts[:i])
+        if prefix in EXCLUDE_DIRS or prefix in extra_dirs:
             return True
     if not with_tests and parts[0] == "tests":
         return True
@@ -67,16 +88,16 @@ def wanted_models(spec: str | None) -> set[str] | None:
     return out
 
 
-def collect(with_tests: bool, models: set[str] | None) -> list[str]:
+def collect(with_tests: bool, models: set[str] | None, extra_dirs: frozenset[str] = frozenset()) -> list[str]:
     files = []
     for dirpath, dirnames, filenames in os.walk(ROOT):
         r_dir = rel(dirpath, ROOT)
         r_dir = "" if r_dir == "." else r_dir
         # podar directorios excluidos
-        dirnames[:] = [d for d in sorted(dirnames) if not excluded((r_dir + "/" + d).lstrip("/"), with_tests)]
+        dirnames[:] = [d for d in sorted(dirnames) if not excluded((r_dir + "/" + d).lstrip("/"), with_tests, extra_dirs)]
         for fn in sorted(filenames):
             r = (r_dir + "/" + fn).lstrip("/")
-            if excluded(r, with_tests):
+            if excluded(r, with_tests, extra_dirs):
                 continue
             if r.startswith("models/"):
                 if not fn.lower().endswith(".gguf"):
@@ -132,25 +153,32 @@ def sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def prune(dest: str, keep: set[str]) -> int:
-    """Borra en destino archivos/dirs que no están en `keep` (rutas relativas), salvo workspace/ y logs/."""
+def _under(r: str, prefixes: frozenset[str]) -> bool:
+    parts = r.split("/")
+    return any("/".join(parts[:i]) in prefixes for i in range(1, len(parts) + 1))
+
+
+def prune(dest: str, keep: set[str], protected: frozenset[str] = frozenset()) -> int:
+    """Borra en destino archivos/dirs que no están en `keep` (rutas relativas), salvo workspace/, logs/
+    y los prefijos `protected` (p. ej. los binarios de la otra plataforma cuando se usa --platform)."""
+    protected = frozenset(protected | {"workspace", "logs"})
     removed = 0
     for dirpath, dirnames, filenames in os.walk(dest, topdown=False):
         r_dir = rel(dirpath, dest)
         r_dir = "" if r_dir == "." else r_dir
-        if r_dir.split("/")[0] in ("workspace", "logs"):
+        if r_dir and _under(r_dir, protected):
             continue
         for fn in filenames:
             r = (r_dir + "/" + fn).lstrip("/")
             if r == "MANIFEST.txt":
                 continue
-            if r not in keep:
+            if r not in keep and not _under(r, protected):
                 os.remove(os.path.join(dirpath, fn))
                 removed += 1
         for d in dirnames:
             full = os.path.join(dirpath, d)
             rd = (r_dir + "/" + d).lstrip("/")
-            if rd in ("workspace", "logs"):
+            if _under(rd, protected):
                 continue
             try:
                 if not os.listdir(full):
@@ -164,6 +192,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dest", default=os.path.join(ROOT, "dist", "CodeSolver"))
     ap.add_argument("--models", default=None, help="alias separados por coma: 4b,9b,2b,coder7b o nombres de archivo")
+    ap.add_argument("--platform", choices=("win", "linux", "both"), default="both",
+                    help="qué binarios incluir: win (.exe), linux (mismo USB para Ubuntu) o both (ambos, default)")
     ap.add_argument("--without-tests", action="store_true", help="no copiar tests/ (bench.py los necesita)")
     ap.add_argument("--no-prune", action="store_true", help="no borrar en destino lo que sobra")
     ap.add_argument("--no-manifest", action="store_true")
@@ -180,10 +210,11 @@ def main() -> int:
             print("ERROR: modelos no encontrados en models/: " + ", ".join(missing))
             return 2
 
+    extra_dirs = frozenset(platform_excludes(a.platform))
     t0 = time.time()
-    files = collect(with_tests=not a.without_tests, models=models)
+    files = collect(with_tests=not a.without_tests, models=models, extra_dirs=extra_dirs)
     total_bytes = sum(os.path.getsize(os.path.join(ROOT, r)) for r in files)
-    print(f"Origen : {ROOT}\nDestino: {dest}\nArchivos: {len(files)}  ({total_bytes / 2**30:.2f} GB)")
+    print(f"Origen : {ROOT}\nDestino: {dest}\nPlataforma: {a.platform}\nArchivos: {len(files)}  ({total_bytes / 2**30:.2f} GB)")
     os.makedirs(dest, exist_ok=True)
 
     copied = skipped = copied_bytes = 0

@@ -131,6 +131,7 @@ class Handler(BaseHTTPRequestHandler):
         problem = (body.get("problem") or "").strip()
         language = body.get("language") or st.cfg["language"]
         tests = body.get("tests")
+        statement_lang = body.get("statement_lang") or "auto"
         use_reasoning = bool(body.get("reasoning", True)) and bool(st.cfg["reasoning"]["enabled"])
         if not problem:
             return self._json({"error": "empty problem"}, 400)
@@ -149,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 result = st.solver.solve(problem, language, emit, st.cancel,
                                          tests=tests if isinstance(tests, list) and tests else None,
-                                         use_reasoning=use_reasoning)
+                                         use_reasoning=use_reasoning, statement_lang=statement_lang)
                 emit({"type": "done", **result})
             except Cancelled:
                 try:

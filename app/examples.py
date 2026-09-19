@@ -1,10 +1,11 @@
 """Extracción de ejemplos (input/expected) del enunciado por heurísticas de regex.
 
-Formatos soportados:
+Formatos soportados (inglés y español):
   - "Sample Input [N]" / "Sample Output [N]"  (UVa, ICPC, Kattis)
-  - "Examples" seguido de bloques "Input" / "Output"  (Codeforces)
-  - "Example N:" con "Input: ..." / "Output: ..." inline  (LeetCode / AtCoder-like)
-  - "Input" / "Output" como encabezados de línea en cualquier parte, filtrando prosa.
+  - "Entrada de ejemplo" / "Salida de ejemplo", "Entrada" / "Salida", "Ejemplo de entrada/salida"
+  - "Examples"/"Ejemplos" seguido de bloques "Input"/"Output" o "Entrada"/"Salida"  (Codeforces)
+  - "Example N:"/"Ejemplo N:" con "Input:"/"Entrada:" / "Output:"/"Salida:" inline  (LeetCode-like)
+  - "Input"/"Entrada" / "Output"/"Salida" como encabezados de línea, filtrando prosa.
 Si no se encuentra nada, el solver recurre al LLM (prompts/extract_examples.txt).
 """
 from __future__ import annotations
@@ -12,18 +13,25 @@ from __future__ import annotations
 import json
 import re
 
+# palabras clave de entrada/salida en inglés y español
+_IN = r"sample\s+input|example\s+input|entrada\s+de\s+ejemplo|ejemplo\s+de\s+entrada|input|entrada"
+_OUT = r"sample\s+output|example\s+output|salida\s+de\s+ejemplo|ejemplo\s+de\s+salida|output|salida"
+_EXWORD = r"examples?|samples?|sample\s+tests?|test\s+cases?|ejemplos?|casos?\s+de\s+prueba|casos?\s+de\s+ejemplo"
+
 _HDR = re.compile(
-    r"^[ \t]*(?:#+\s*|\*\*)?(?P<kind>sample\s+input|sample\s+output|example\s+input|example\s+output|input|output)"
-    r"(?:[ \t]*(?:#|№)?[ \t]*\d+)?[ \t]*(?:\*\*)?[ \t]*:?[ \t]*(?P<inline>\S.*)?$",
+    r"^[ \t]*(?:#+\s*|\*\*)?(?P<kind>" + _IN + r"|" + _OUT + r")"
+    r"(?:[ \t]*(?:#|№|n[°º])?[ \t]*\d+)?[ \t]*(?:\*\*)?[ \t]*:?[ \t]*(?P<inline>\S.*)?$",
     re.IGNORECASE | re.MULTILINE,
 )
-_EXAMPLES_HDR = re.compile(r"^[ \t]*(?:#+\s*|\*\*)?(examples?|samples?|sample\s+tests?|test\s+cases?)\s*(?:\*\*)?\s*:?[ \t]*$",
+_EXAMPLES_HDR = re.compile(r"^[ \t]*(?:#+\s*|\*\*)?(?:" + _EXWORD + r")\s*(?:\*\*)?\s*:?[ \t]*$",
                            re.IGNORECASE | re.MULTILINE)
-_STOP_HDR = re.compile(r"^[ \t]*(?:#+\s*|\*\*)?(note|notes|explanation|constraints|hint|scoring|subtasks?)\b",
-                       re.IGNORECASE)
-# "Example 2:", "### Sample 3", "Test case 1"...: separan ejemplos y nunca forman parte del input/output.
+_STOP_HDR = re.compile(
+    r"^[ \t]*(?:#+\s*|\*\*)?(note|notes|explanation|constraints|hint|scoring|subtasks?"
+    r"|nota|notas|explicaci[oó]n|restricciones|pista|subtareas?)\b",
+    re.IGNORECASE)
+# "Example 2:", "Ejemplo 3", "Test case 1", "Caso de prueba 2"...: separan ejemplos.
 _EXAMPLE_N_HDR = re.compile(
-    r"^[ \t]*(?:#+\s*|\*\*)?(?:examples?|samples?|sample\s+tests?|test\s*cases?)\s*(?:#|№)?\s*\d*\s*(?:\*\*)?\s*:?[ \t]*$",
+    r"^[ \t]*(?:#+\s*|\*\*)?(?:" + _EXWORD + r")\s*(?:#|№|n[°º])?\s*\d*\s*(?:\*\*)?\s*:?[ \t]*$",
     re.IGNORECASE)
 # Cualquier encabezado markdown con texto ("### Something") termina el bloque.
 _MD_HEADING = re.compile(r"^[ \t]*#{1,6}[ \t]+[A-Za-z]")
@@ -96,7 +104,8 @@ def extract_examples(statement: str) -> list[dict]:
     heads = list(_HDR.finditer(region))
     items: list[tuple[str, str]] = []  # (kind, block)
     for i, h in enumerate(heads):
-        kind = "input" if "input" in h.group("kind").lower() else "output"
+        k = h.group("kind").lower()
+        kind = "input" if ("input" in k or "entrada" in k) else "output"
         inline = h.group("inline")
         end = heads[i + 1].start() if i + 1 < len(heads) else len(region)
         body = region[h.end():end]

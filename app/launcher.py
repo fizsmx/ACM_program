@@ -6,6 +6,7 @@ import argparse
 import json
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -22,6 +23,30 @@ from llm import LlamaClient
 log = logging.getLogger("launcher")
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _JOB = jobobject.try_create()  # los hijos mueren si el launcher muere (cierre de ventana incluido)
+
+
+def _no_window_run_kwargs() -> dict:
+    """kwargs para subprocess.run breves (tasklist/kill); en Linux no hay creationflags."""
+    return {"creationflags": _NO_WINDOW} if paths.IS_WIN else {}
+
+
+def _child_dies_with_parent():
+    """En Linux: preexec_fn que hace que el hijo reciba SIGKILL si el launcher muere (PR_SET_PDEATHSIG).
+    En Windows devuelve None (lo cubre el Job Object)."""
+    if paths.IS_WIN:
+        return None
+    import ctypes
+
+    def _preexec():  # se ejecuta en el hijo, tras el fork y antes del exec
+        try:
+            libc = ctypes.CDLL("libc.so.6", use_errno=True)
+            PR_SET_PDEATHSIG = 1
+            libc.prctl(PR_SET_PDEATHSIG, signal.SIGKILL)
+        except Exception:
+            pass
+        os.setsid()  # grupo propio para poder matar el árbol
+
+    return _preexec
 
 
 # --------------------------------------------------------------------------- util
@@ -57,7 +82,13 @@ def free_port(start: int, tries: int = 6) -> int:
 
 
 def process_name(pid: int) -> str:
-    """Nombre de imagen del proceso con ese PID ('' si no existe)."""
+    """Nombre de imagen del proceso con ese PID ('' si no existe), en minúsculas."""
+    if not paths.IS_WIN:
+        try:
+            with open(f"/proc/{pid}/comm", encoding="utf-8") as f:
+                return f.read().strip().lower()
+        except OSError:
+            return ""
     out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                          capture_output=True, text=True, creationflags=_NO_WINDOW).stdout
     line = out.strip().splitlines()[0] if out.strip() else ""
@@ -75,9 +106,18 @@ def kill_stale_llm() -> bool:
     try:
         with open(paths.LLM_PID_FILE, encoding="utf-8") as f:
             pid = int(f.read().strip())
-        if process_name(pid) == "llama-server.exe":
+        if "llama-server" in process_name(pid):  # 'llama-server.exe' en Windows, 'llama-server' en Linux
             log.warning("Cerrando llama-server huérfano (PID %s) de una sesión anterior", pid)
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=_NO_WINDOW)
+            if paths.IS_WIN:
+                subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, creationflags=_NO_WINDOW)
+            else:
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass
             killed = True
     except Exception as e:
         log.debug("kill_stale_llm: %s", e)
@@ -155,8 +195,9 @@ def start_llama(cfg: dict, hw: dict, model: str, port: int, kind: str, budget: i
     args = llama_args(exe, model, port, cfg, hw, gpu=(kind != "cpu"), budget=budget)
     log.info("Arrancando llama-server [%s]: %s", kind, " ".join(args[1:]))
     lf = open(logfile, "w", encoding="utf-8")
+    popen_kw = {"creationflags": _NO_WINDOW} if paths.IS_WIN else {"preexec_fn": _child_dies_with_parent()}
     proc = subprocess.Popen(args, cwd=paths.llama_dir(kind), stdout=lf, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
+                            stdin=subprocess.DEVNULL, **popen_kw)
     if _JOB is not None and not _JOB.assign(proc):
         log.warning("No se pudo asignar llama-server al Job Object; se usará el PID file como respaldo")
     with open(paths.LLM_PID_FILE, "w") as f:
@@ -252,7 +293,8 @@ def run_check(cfg: dict) -> int:
     row(True, f"APP_ROOT = {paths.APP_ROOT}", f"unidad {drive}")
     hw = hardware.detect()
     row(True, f"RAM libre {hw['ram_free_gb']} GB de {hw['ram_total_gb']} GB, {hw['logical_cpus']} CPUs lógicas")
-    row(True if hw["vulkan"] else None, "vulkan-1.dll (GPU opcional)", ", ".join(hw["gpus"]) or ("presente" if hw["vulkan"] else "no disponible → se usará CPU"))
+    _vk = "vulkan-1.dll" if paths.IS_WIN else "libvulkan.so.1"
+    row(True if hw["vulkan"] else None, f"Vulkan / {_vk} (GPU opcional)", ", ".join(hw["gpus"]) or ("presente" if hw["vulkan"] else "no disponible → se usará CPU"))
 
     for label, exe, args in (("runtime/python", paths.PYTHON_EXE, ["-X", "utf8", "-c", "print('hello')"]),
                              ("runtime/node", paths.NODE_EXE, ["-e", "console.log('hello')"])):

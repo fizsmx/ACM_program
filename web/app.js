@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const els = {
   status: $('status'), problem: $('problem'), language: $('language'), reasoning: $('reasoning'),
+  stmtlang: $('stmtlang'),
   solve: $('btnSolve'), cancel: $('btnCancel'), clear: $('btnClear'), copy: $('btnCopy'), run: $('btnRun'),
   phase: $('phase'), analysis: $('analysis'), code: $('code'), results: $('results'),
   thinking: $('thinking'), thinkLen: $('thinkLen'), thinkBox: $('thinkBox'), devlog: $('devlog'),
@@ -90,7 +91,7 @@ async function solve() {
   solving = true; els.solve.disabled = true; els.cancel.disabled = false;
   els.results.innerHTML = ''; els.analysis.textContent = ''; els.code.textContent = ''; els.devlog.textContent = ''; lastEvents = [];
   solveStart = Date.now(); setPhase('starting…'); if (timerId) clearInterval(timerId); timerId = setInterval(tick, 1000);
-  const body = { problem, language: els.language.value, reasoning: els.reasoning.checked };
+  const body = { problem, language: els.language.value, reasoning: els.reasoning.checked, statement_lang: els.stmtlang.value };
   const tests = readTests(); if (tests.length) body.tests = tests;
   try {
     const r = await fetch('/api/solve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

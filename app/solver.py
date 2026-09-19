@@ -53,7 +53,8 @@ class Solver:
     def _prompt(self, name: str, language: str, **kw) -> str:
         txt = paths.read_prompt(name)
         rules = paths.read_prompt(f"rules_{language}.txt")
-        rep = {"LANGUAGE_LABEL": _LABEL[language], "FENCE": _FENCE[language], "LANGUAGE_RULES": rules, **kw}
+        rep = {"LANGUAGE_LABEL": _LABEL[language], "FENCE": _FENCE[language], "LANGUAGE_RULES": rules,
+               "STATEMENT_LANG_HINT": getattr(self, "_stmt_hint", ""), **kw}
         for k, v in rep.items():
             txt = txt.replace("{" + k + "}", v)
         return txt
@@ -147,7 +148,11 @@ class Solver:
 
     # ----------------------------------------------------------------- main
     def solve(self, problem: str, language: str, emit: Emit, cancel: threading.Event,
-              tests: list[dict] | None = None, use_reasoning: bool = True) -> dict:
+              tests: list[dict] | None = None, use_reasoning: bool = True,
+              statement_lang: str = "auto") -> dict:
+        hints = {"es": "The statement below is written in Spanish.",
+                 "en": "The statement below is written in English."}
+        self._stmt_hint = hints.get((statement_lang or "auto").lower(), "")
         t_start = time.time()
         self._deadline = t_start + float(self.cfg["solve_timeout_seconds"])
         try:

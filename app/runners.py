@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import shutil
 import subprocess
 import time
@@ -17,19 +18,42 @@ LANGS = {
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def _popen_kwargs() -> dict:
+    """En Windows oculta la ventana; en Linux crea un grupo de procesos nuevo para poder matar el árbol."""
+    if paths.IS_WIN:
+        return {"creationflags": _NO_WINDOW}
+    return {"start_new_session": True}
+
+
 def _env() -> dict:
     env = {
-        "PATH": os.path.dirname(paths.NODE_EXE) + os.pathsep + os.path.dirname(paths.PYTHON_EXE),
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", r"C:\Windows"),
-        "TEMP": paths.WORKSPACE_DIR, "TMP": paths.WORKSPACE_DIR,
+        "PATH": os.path.dirname(paths.NODE_EXE) + os.pathsep + os.path.dirname(paths.PYTHON_EXE)
+                + (os.pathsep + "/usr/bin:/bin" if not paths.IS_WIN else ""),
+        "TEMP": paths.WORKSPACE_DIR, "TMP": paths.WORKSPACE_DIR, "TMPDIR": paths.WORKSPACE_DIR,
         "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUTF8": "1",
         "NODE_OPTIONS": "--max-old-space-size=1024",
     }
+    if paths.IS_WIN:
+        env["SYSTEMROOT"] = os.environ.get("SYSTEMROOT", r"C:\Windows")
+    else:
+        env["HOME"] = os.environ.get("HOME", paths.WORKSPACE_DIR)
+        env["LANG"] = "C.UTF-8"
+        # los binarios portables de Linux traen sus .so junto al ejecutable
+        env["LD_LIBRARY_PATH"] = os.path.dirname(paths.NODE_EXE) + os.pathsep + os.path.dirname(paths.PYTHON_EXE)
     return env
 
 
-def _kill_tree(pid: int) -> None:
-    subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, creationflags=_NO_WINDOW)
+def _kill_tree(proc: subprocess.Popen) -> None:
+    if paths.IS_WIN:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, creationflags=_NO_WINDOW)
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
 
 def _run(cmd: list[str], cwd: str, stdin_text: str, timeout: float) -> dict:
@@ -38,7 +62,7 @@ def _run(cmd: list[str], cwd: str, stdin_text: str, timeout: float) -> dict:
         proc = subprocess.Popen(
             cmd, cwd=cwd, env=_env(), text=True, encoding="utf-8", errors="replace",
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            creationflags=_NO_WINDOW,
+            **_popen_kwargs(),
         )
     except OSError as e:
         return {"status": "INTERNAL_ERROR", "stdout": "", "stderr": f"cannot start runtime: {e}", "time_ms": 0, "exit_code": -1}
@@ -46,7 +70,7 @@ def _run(cmd: list[str], cwd: str, stdin_text: str, timeout: float) -> dict:
         out, err = proc.communicate(stdin_text, timeout=timeout)
         ms = int((time.time() - t0) * 1000)
     except subprocess.TimeoutExpired:
-        _kill_tree(proc.pid)
+        _kill_tree(proc)
         try:
             out, err = proc.communicate(timeout=3)
         except Exception:
