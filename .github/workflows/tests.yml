@@ -15,5 +15,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Map CI runtimes to portable paths
+        run: |
+          mkdir -p runtime/python-linux/bin runtime/node-linux/bin
+          ln -sf "$(which python3)" runtime/python-linux/bin/python3
+          ln -sf "$(which node)" runtime/node-linux/bin/node
       - name: Run offline unit tests
-        run: python -X utf8 tests/test_units.py -v
+        run: python3 -X utf8 tests/test_units.py -v
