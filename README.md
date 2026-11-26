@@ -4,6 +4,7 @@
 
 **Portable, 100% offline competitive programming AI assistant** powered by local LLMs (**`llama.cpp` + GGUF models** with automatic Vulkan GPU / CPU acceleration), automated sample-test extraction, sandboxed code execution, and an iterative **self-repair & rethink loop** for Python and JavaScript.
 
+[![Unit Tests](https://github.com/fizsmx/ACM_program/actions/workflows/tests.yml/badge.svg)](https://github.com/fizsmx/ACM_program/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF_Local_LLM-38B2AC?style=for-the-badge&logo=meta&logoColor=white)](https://github.com/ggerganov/llama.cpp)
 [![Vulkan / CPU](https://img.shields.io/badge/Inference-Vulkan_GPU_%2F_CPU-0F4C5C?style=for-the-badge)](https://www.vulkan.org/)
